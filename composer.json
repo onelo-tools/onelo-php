@@ -1,0 +1,47 @@
+{
+    "name": "onelo/onelo-php",
+    "description": "Onelo backend SDK for PHP — verify user tokens, gate features, capture monitor events. Adapters for Laravel and PSR-15.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["onelo", "auth", "authentication", "feature-flags", "laravel", "psr-15"],
+    "require": {
+        "php": ">=8.1",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "psr/http-message": "^1.1 || ^2.0",
+        "psr/http-factory": "^1.0",
+        "psr/http-server-middleware": "^1.0",
+        "psr/http-server-handler": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "nyholm/psr7": "^1.8"
+    },
+    "suggest": {
+        "laravel/framework": "Laravel auth middleware (Onelo\\Laravel\\OneloAuthenticate) + the features listener command (onelo:features:listen)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Onelo\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Onelo\\Laravel\\OneloServiceProvider"
+            ]
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Onelo\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
