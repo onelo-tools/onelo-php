@@ -126,6 +126,22 @@ final class MonitorClient
             $this->previousErrorHandler = set_error_handler([$this, 'onError']);
             $this->errorHandlerInstalled = true;
         }
+
+        // Unconditional baseline signal — emitted at the very end of init(), before
+        // any application code runs. PHP has no long-lived "construction" (each
+        // PHP-FPM request re-constructs/re-inits the client), so this fires once
+        // PER REQUEST rather than once per process lifetime like the JS/browser
+        // SDK's single `session_opened` at construction. That's intentional, not a
+        // shortcut: a service that gates every instrumented operation behind auth
+        // middleware / a feature flag can otherwise reach request end with ZERO
+        // monitor events, looking uninitialised even though the developer followed
+        // every instrumentation rule. A per-request `session_opened` guarantees the
+        // dashboard sees traffic as soon as `init()` runs, independent of whatever
+        // gate sits downstream — mirroring the JS fix's intent (prove the SDK is
+        // alive) adapted to PHP's request-scoped lifecycle. Goes through emit() —
+        // not raw buffer push — so it carries the same scope/deploy/sdk enrichment
+        // as any other event.
+        $this->emit(MonitorEvent::make('session_opened', true, source: 'event'));
     }
 
     public function isInitialised(): bool

@@ -29,6 +29,7 @@ final class Psr15MonitorMiddlewareTest extends TestCase
             transport: $this->fake,
         );
         $this->client->monitor->init(['installGlobalHandlers' => false]);
+        $this->client->monitor->flush(); // drain the auto-emitted `session_opened` baseline event
     }
 
     protected function tearDown(): void

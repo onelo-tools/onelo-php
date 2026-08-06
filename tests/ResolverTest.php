@@ -134,6 +134,7 @@ final class ResolverTest extends TestCase
         $fake = FakeTransport::json(200, Fixtures::OK_USER);
         $client = Fixtures::secretClient($fake);
         $client->monitor->init(['installGlobalHandlers' => false]);
+        $client->monitor->flush(); // drain the auto-emitted `session_opened` baseline event
         $user = Resolver::fromOptions($client)->resolve('Bearer tok', null);
         self::assertSame('user_1', $user->id);
         // The bridge set the user on the monitor scope → the next event carries it.
@@ -149,6 +150,7 @@ final class ResolverTest extends TestCase
         $fake = FakeTransport::json(200, Fixtures::OK_USER);
         $client = Fixtures::secretClient($fake);
         $client->monitor->init(['installGlobalHandlers' => false]);
+        $client->monitor->flush(); // drain the auto-emitted `session_opened` baseline event
         Resolver::fromOptions($client, ['identifyMonitor' => false])->resolve('Bearer tok', null);
         $client->monitor->captureMessage('probe');
         $client->monitor->flush();
@@ -164,6 +166,7 @@ final class ResolverTest extends TestCase
             $fake = FakeTransport::json(200, Fixtures::OK_USER);
             $client = Fixtures::secretClient($fake);
             $client->monitor->init(['installGlobalHandlers' => false]);
+            $client->monitor->flush(); // drain the auto-emitted `session_opened` baseline event
             // Persistent runtime, monitor middleware NOT mounted (no resetScope) →
             // the bridge must skip so a user can't leak across requests.
             Resolver::fromOptions($client)->resolve('Bearer tok', null);

@@ -51,6 +51,7 @@ final class LaravelMonitorMiddlewareTest extends TestCase
         $fake = FakeTransport::json(200, ['ok' => true]);
         $client = new Onelo(secretKey: 'onelo_sk_test_m', apiUrl: 'https://api.test.onelo.tools', transport: $fake);
         $client->monitor->init(['installGlobalHandlers' => false]);
+        $client->monitor->flush(); // drain the auto-emitted `session_opened` baseline event
         $mw = new OneloMonitor($client);
         $req = $this->request('DELETE', 'http://x/thing?key=abc', [
             'Authorization' => ['Bearer s'],

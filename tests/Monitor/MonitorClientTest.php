@@ -36,6 +36,13 @@ final class MonitorClientTest extends TestCase
         );
         $this->monitor = $client->monitor;
         $this->monitor->init(array_merge(['installGlobalHandlers' => false], $initOptions));
+        // init() now auto-emits one unconditional `session_opened` baseline event
+        // (cold-start visibility fix). Drain + discard it here so per-test
+        // assertions (firstEvent(), call counts) reflect only what the test itself
+        // emits — same treatment as the JS/browser SDK's equivalent test fixup.
+        $this->monitor->flush();
+        $this->fake->calls = 0;
+        $this->fake->lastBody = null;
 
         return $this->monitor;
     }
@@ -263,6 +270,7 @@ final class MonitorClientTest extends TestCase
         );
         $m = $client->monitor;
         $m->init(['installGlobalHandlers' => false]);
+        $m->flush(); // drain the auto-emitted `session_opened` baseline event
         $m->captureMessage('probe');
         $m->flush();
         $flags = (json_decode((string) $fake->lastBody, true))['events'][0]['meta']['flags'] ?? null;
