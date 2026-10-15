@@ -68,10 +68,16 @@ final class FeaturesClient
     /**
      * Set the process-global identity used by the cache-backed feature() path.
      * On a multi-user backend prefer forUser() — see maybeWarnGated().
+     *
+     * @throws SecretKeyRequired for a non-empty userId when the client holds a
+     *                           publishable key (#520); identify(null) always works.
      */
     public function identify(?string $userId): void
     {
         $normalized = ($userId !== null && $userId !== '') ? $userId : null;
+        if ($normalized !== null) {
+            SecretKeyRequired::assertFor($this->client->key, '$onelo->features->identify($userId)');
+        }
         // Count only switches TO a non-null id different from the current one —
         // exactly Python's `switched = user_id != prev and user_id is not None`.
         $switched = $normalized !== $this->userId && $normalized !== null;
@@ -200,12 +206,16 @@ final class FeaturesClient
      * Resolve features for a SPECIFIC user_id — the multi-user-safe path (no
      * global identity mutation, no cross-user race). Cached per-user for `ttl`
      * seconds. Fail-closed: a network/HTTP error resolves every feature to hidden.
+     *
+     * @throws SecretKeyRequired when the client holds a publishable key — a
+     *                           per-user call must be signed with the secret key (#520).
      */
     public function forUser(string $userId, float $ttl = 30.0): UserFeatures
     {
         if ($userId === '') {
             throw new \InvalidArgumentException('forUser requires a non-empty user_id');
         }
+        SecretKeyRequired::assertFor($this->client->key, '$onelo->features->forUser($userId)');
         $snapshot = $this->userCache->get($userId);
         if ($snapshot === null) {
             $snapshot = $this->resolveUser($userId);
@@ -294,8 +304,11 @@ final class FeaturesClient
      */
     private function pollOnce(): void
     {
+        // The key is NOT in the query string — it travels as the
+        // `X-Publishable-Key` request header (ADR-0003, #105), exactly as
+        // SseConsumer sends it on the stream. self::headers() carries only the
+        // transport headers; the credential is added at the send() call below.
         $params = [
-            'key' => $this->client->key,
             'since_version' => (string) $this->store->configVersion(),
         ];
         if ($this->client->featureEnvironment !== null) {
@@ -306,7 +319,13 @@ final class FeaturesClient
         }
         $url = $this->client->apiUrl . '/api/sdk/features/poll?' . http_build_query($params);
         try {
-            $resp = $this->client->transport->send('GET', $url, self::headers(), null, $this->client->requestTimeoutMs);
+            $resp = $this->client->transport->send(
+                'GET',
+                $url,
+                self::headers() + ['X-Publishable-Key' => $this->client->key],
+                null,
+                $this->client->requestTimeoutMs,
+            );
         } catch (TransportException $e) {
             error_log('[onelo.features] poll failed (fail-closed): ' . $e->getMessage());
 

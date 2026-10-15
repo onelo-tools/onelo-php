@@ -100,6 +100,10 @@ final class SseConsumer
         ?callable $onDiscoveryRequested = null,
         ?callable $onFirstContact = null,
     ) {
+        if ($userId !== null) {
+            // #520: a fixed per-user stream/poll must be signed with the secret key.
+            SecretKeyRequired::assertFor($key, 'a Features consumer with a fixed userId');
+        }
         $this->apiUrl = rtrim($apiUrl, '/');
         $this->connectTimeoutMs = $connectTimeoutMs;
         $this->onDiscoveryRequested = $onDiscoveryRequested !== null ? \Closure::fromCallable($onDiscoveryRequested) : null;
@@ -163,14 +167,15 @@ final class SseConsumer
     }
 
     /**
-     * Open one SSE connection and consume it until it closes / errors / stop().
-     * Throws {@see SseTerminalAuthError} on 401/403 (terminal), or a plain
-     * RuntimeException on a transient network/curl error (retried by run()).
+     * The Event Stream URL for the NEXT handshake.
+     *
+     * It carries the non-secret identity only. The key is deliberately absent:
+     * per ADR-0003 it travels as the `X-Publishable-Key` request header, so it
+     * never reaches the reverse proxy's access.log.
      */
-    private function connectAndConsume(): void
+    private function streamUrl(): string
     {
         $params = [
-            'key' => $this->key,
             // Read fresh each handshake so a reconnect resumes from the version
             // the store already has (backend sends `up_to_date` if unchanged).
             'since_version' => (string) $this->store->configVersion(),
@@ -187,7 +192,37 @@ final class SseConsumer
         if ($this->userId !== null) {
             $params['userId'] = $this->userId;
         }
-        $url = $this->apiUrl . '/api/sdk/features/stream?' . http_build_query($params);
+
+        return $this->apiUrl . '/api/sdk/features/stream?' . http_build_query($params);
+    }
+
+    /**
+     * Request headers for the Event Stream GET, in curl's `Name: value` form.
+     *
+     * `X-Publishable-Key` is the stream's credential (ADR-0003). A
+     * header-authenticated connection carries no `Deprecation`/`Sunset` — unlike
+     * one that presents the key as `?key=`.
+     *
+     * @return list<string>
+     */
+    private function streamHeaders(): array
+    {
+        return [
+            'Accept: text/event-stream',
+            'Cache-Control: no-cache',
+            'User-Agent: onelo-php/' . Version::VERSION,
+            'X-Publishable-Key: ' . $this->key,
+        ];
+    }
+
+    /**
+     * Open one SSE connection and consume it until it closes / errors / stop().
+     * Throws {@see SseTerminalAuthError} on 401/403 (terminal), or a plain
+     * RuntimeException on a transient network/curl error (retried by run()).
+     */
+    private function connectAndConsume(): void
+    {
+        $url = $this->streamUrl();
 
         $this->buffer = '';
         $this->currentStatus = 0;
@@ -200,11 +235,7 @@ final class SseConsumer
 
         curl_setopt_array($ch, [
             CURLOPT_HTTPGET => true,
-            CURLOPT_HTTPHEADER => [
-                'Accept: text/event-stream',
-                'Cache-Control: no-cache',
-                'User-Agent: onelo-php/' . Version::VERSION,
-            ],
+            CURLOPT_HTTPHEADER => $this->streamHeaders(),
             // Connect timeout applies to the handshake only. The stream is
             // long-lived: CURLOPT_TIMEOUT=0 disables the overall timeout so we
             // don't tear down a healthy idle-between-heartbeats connection.

@@ -25,6 +25,14 @@ final class PollingConsumer
     private readonly string $apiUrl;
     private readonly ?\Closure $onDiscoveryRequested;
     private readonly ?\Closure $onFirstContact;
+    /**
+     * The HTTP leg of pollOnce(): fn(string $url, list<string> $headers, int $timeoutMs)
+     * → [string|false $body, int $status, string $err]. Null = the built-in raw
+     * curl GET. The class is final and drives curl inline (no Transport), so an
+     * injectable closure is the smallest seam that lets a test see the exact
+     * URL + headers the wire receives — see PollingConsumerTest.
+     */
+    private readonly ?\Closure $httpGet;
 
     /** Set once the backend has answered a poll (200 or 304). */
     private bool $firstContact = false;
@@ -41,6 +49,7 @@ final class PollingConsumer
      * @param string|null   $userId              optional FIXED single-tenant user id.
      * @param callable|null $onDiscoveryRequested invoked when the backend flags a pending discovery.
      * @param callable|null $onFirstContact       invoked once, on the first successful poll.
+     * @param callable|null $httpGet              test seam replacing the raw curl GET (see property doc).
      */
     public function __construct(
         private readonly SnapshotStore $store,
@@ -52,10 +61,16 @@ final class PollingConsumer
         private readonly ?string $userId = null,
         ?callable $onDiscoveryRequested = null,
         ?callable $onFirstContact = null,
+        ?callable $httpGet = null,
     ) {
+        if ($userId !== null) {
+            // #520: a fixed per-user stream/poll must be signed with the secret key.
+            SecretKeyRequired::assertFor($key, 'a Features consumer with a fixed userId');
+        }
         $this->apiUrl = rtrim($apiUrl, '/');
         $this->onDiscoveryRequested = $onDiscoveryRequested !== null ? \Closure::fromCallable($onDiscoveryRequested) : null;
         $this->onFirstContact = $onFirstContact !== null ? \Closure::fromCallable($onFirstContact) : null;
+        $this->httpGet = $httpGet !== null ? \Closure::fromCallable($httpGet) : null;
     }
 
     /** True once the backend has answered at least one poll. */
@@ -82,8 +97,12 @@ final class PollingConsumer
     /** One GET /features/poll → replaceAll into the store. Never throws. */
     private function pollOnce(): void
     {
+        // The key is NOT in the query string — it travels as the
+        // `X-Publishable-Key` request header (ADR-0003, #105), exactly as
+        // SseConsumer sends it on the stream. /poll fires on a timer, so a raw
+        // key in the URL landed in the reverse proxy's access.log on every
+        // tick; from 2027-03-31 the backend refuses `?key=` outright.
         $params = [
-            'key' => $this->key,
             'since_version' => (string) $this->store->configVersion(),
         ];
         if ($this->featureEnvironment !== null) {
@@ -93,28 +112,34 @@ final class PollingConsumer
             $params['userId'] = $this->userId;
         }
         $url = $this->apiUrl . '/api/sdk/features/poll?' . http_build_query($params);
+        $headers = [
+            'Accept: application/json',
+            'User-Agent: onelo-php/' . Version::VERSION,
+            'X-Publishable-Key: ' . $this->key,
+        ];
 
-        $ch = curl_init($url);
-        if ($ch === false) {
-            error_log('[onelo.features] poll: failed to initialise curl');
+        if ($this->httpGet !== null) {
+            [$body, $status, $err] = ($this->httpGet)($url, $headers, $this->requestTimeoutMs);
+        } else {
+            $ch = curl_init($url);
+            if ($ch === false) {
+                error_log('[onelo.features] poll: failed to initialise curl');
 
-            return;
+                return;
+            }
+            curl_setopt_array($ch, [
+                CURLOPT_HTTPGET => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_TIMEOUT_MS => $this->requestTimeoutMs,
+                CURLOPT_CONNECTTIMEOUT_MS => $this->requestTimeoutMs,
+            ]);
+            $body = curl_exec($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            $err = curl_error($ch);
+            // No curl_close(): no-op since PHP 8.0, DEPRECATED since 8.5 (the notice
+            // leaks into responses under display_errors=1). GC frees $ch. See CurlTransport.
         }
-        curl_setopt_array($ch, [
-            CURLOPT_HTTPGET => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'Accept: application/json',
-                'User-Agent: onelo-php/' . Version::VERSION,
-            ],
-            CURLOPT_TIMEOUT_MS => $this->requestTimeoutMs,
-            CURLOPT_CONNECTTIMEOUT_MS => $this->requestTimeoutMs,
-        ]);
-        $body = curl_exec($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $err = curl_error($ch);
-        // No curl_close(): no-op since PHP 8.0, DEPRECATED since 8.5 (the notice
-        // leaks into responses under display_errors=1). GC frees $ch. See CurlTransport.
 
         if ($body === false) {
             error_log('[onelo.features] poll request failed: ' . $err); // try again next interval

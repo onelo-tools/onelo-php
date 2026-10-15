@@ -46,6 +46,11 @@ final class Onelo
      * @param bool               $featureAutoRefresh lazy per-request GET /poll when no listener
      *                                           keeps the store fresh. Set false under Octane/
      *                                           Swoole or with a running Listener.
+     * @param string|null        $publishableKey DEPRECATED for a server — pass `secretKey` (or
+     *                                           `key`). Still accepted, but with a publishable key
+     *                                           auth verification refuses to run and per-user
+     *                                           Features calls (forUser(), identify($userId))
+     *                                           throw SecretKeyRequired (#520).
      */
     public function __construct(
         ?string $key = null,

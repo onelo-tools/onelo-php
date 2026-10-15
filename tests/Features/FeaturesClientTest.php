@@ -17,6 +17,12 @@ final class FeaturesClientTest extends TestCase
         return new FeaturesClient(Fixtures::publishableClient($fake), $store, $autoRefresh);
     }
 
+    /** Per-user calls (forUser, identify($id)) need the secret key (#520). */
+    private function userClient(FakeTransport $fake): FeaturesClient
+    {
+        return new FeaturesClient(Fixtures::secretClient($fake), new ArrayStore(), false);
+    }
+
     // ── cache-backed reads (no auto-refresh) ──────────────────────────────────
 
     public function testFeatureFailsClosedOnEmptyStore(): void
@@ -46,7 +52,12 @@ final class FeaturesClientTest extends TestCase
         self::assertTrue($f->isEnabled('x'));       // second read reuses the store
         self::assertSame(1, $fake->calls);          // only ONE poll for the whole request
         self::assertStringContainsString('/api/sdk/features/poll', (string) $fake->lastUrl);
-        self::assertStringContainsString('key=onelo_pk_test_abc123', (string) $fake->lastUrl);
+        // ADR-0003 / #105: the credential is the X-Publishable-Key header and
+        // is NOT in the query string (it would land in the proxy access.log on
+        // every poll, and the backend refuses `?key=` from 2027-03-31).
+        self::assertSame('onelo_pk_test_abc123', $fake->lastHeaders['X-Publishable-Key'] ?? null);
+        self::assertStringNotContainsString('key=', (string) $fake->lastUrl);
+        self::assertStringNotContainsString('onelo_pk_test_abc123', (string) $fake->lastUrl);
     }
 
     public function testReadyFallbackPolls(): void
@@ -78,7 +89,7 @@ final class FeaturesClientTest extends TestCase
     public function testForUserResolvesAndCaches(): void
     {
         $fake = FakeTransport::json(200, ['features' => ['face-stream' => ['status' => 'enabled']]]);
-        $f = $this->client($fake, new ArrayStore(), false);
+        $f = $this->userClient($fake);
         $uf = $f->forUser('u1');
         self::assertTrue($uf->isEnabled('face-stream'));
         self::assertStringContainsString('/api/sdk/features/resolve', (string) $fake->lastUrl);
@@ -92,7 +103,7 @@ final class FeaturesClientTest extends TestCase
 
     public function testForUserFailClosed(): void
     {
-        $f = $this->client(FakeTransport::throwing(), new ArrayStore(), false);
+        $f = $this->userClient(FakeTransport::throwing());
         self::assertFalse($f->forUser('u1')->isEnabled('anything')); // network error → hidden
     }
 
@@ -106,7 +117,7 @@ final class FeaturesClientTest extends TestCase
     public function testInvalidateUserForcesReResolve(): void
     {
         $fake = FakeTransport::json(200, ['features' => ['x' => ['status' => 'enabled']]]);
-        $f = $this->client($fake, new ArrayStore(), false);
+        $f = $this->userClient($fake);
         $f->forUser('u1');
         $f->invalidateUser('u1');
         $f->forUser('u1');
@@ -202,7 +213,7 @@ final class FeaturesClientTest extends TestCase
         self::assertIsString($log);
         $prev = ini_set('error_log', $log);
         try {
-            $f = $this->client(FakeTransport::json(200, []), new ArrayStore(), false);
+            $f = $this->userClient(FakeTransport::json(200, []));
             $needle = 'per-request identify()';
 
             // 4 distinct switches (null→u0→u1→u2→u3) — one below threshold.
@@ -228,7 +239,7 @@ final class FeaturesClientTest extends TestCase
         self::assertIsString($log);
         $prev = ini_set('error_log', $log);
         try {
-            $f = $this->client(FakeTransport::json(200, []), new ArrayStore(), false);
+            $f = $this->userClient(FakeTransport::json(200, []));
             for ($i = 0; $i < 10; $i++) {
                 $f->identify('same-user'); // only the first is a switch; the rest are idempotent
             }

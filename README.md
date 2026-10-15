@@ -72,6 +72,8 @@ $token = Verify::extractBearerToken($authorizationHeader);
 $user  = Verify::verifyToken($onelo, $token);
 ```
 
+`new Resolver($onelo, requireEmailVerified: true)` refuses users who have not verified their address with `403` (`reason: email_unverified`). It reads `$user->emailVerified`, which Onelo sets when Email verification is Optional or Required in the parent App's Auth → Sign-up — with it Off, every password user stays unverified. OAuth, Magic Link and e-mailed password resets count as verified.
+
 Failures map to the status you'd expect: invalid or missing token → **401**, forbidden or a failed plan gate → **403**, rate-limited or Onelo unreachable → **503**, so an outage never silently degrades into anonymous access.
 
 ## Modules
@@ -92,6 +94,8 @@ if ($onelo->features->isEnabled('export-api')) { /* … */ }
 // Per-user resolution against their real plan
 $flags = $onelo->features->forUser($userId);
 ```
+
+**Per-user calls require the secret key.** `forUser($userId)`, `identify($userId)` and a listener or consumer with a fixed `userId` send a user id that the Onelo backend trusts only from a secret-key caller. A publishable key is public, so a client built with one throws `Onelo\Features\SecretKeyRequired` on these calls ("use your secret key (onelo_sk_…) on the server") instead of sending a request anyone could forge. Anonymous calls (`isEnabled()`, `feature()`, `declare()`, `identify(null)`) work with either key. The `publishableKey` argument is deprecated for servers; pass `secretKey` (or `key`).
 
 ### Keeping flags fresh
 

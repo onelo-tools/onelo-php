@@ -83,6 +83,18 @@ final class ResolverTest extends TestCase
         self::assertSame('email_unverified', $e->body['reason']);
     }
 
+    public function testRequireEmailVerifiedPassesAVerifiedUser(): void
+    {
+        // #819: /api/sdk/auth/user reports email_verified at the top level;
+        // before that the option refused everyone.
+        $t = FakeTransport::json(200, [
+            'id' => 'u', 'email' => 'e@x.co', 'created_at' => null, 'metadata' => [],
+            'entitlement' => 'none', 'allowed_in' => true, 'email_verified' => true,
+        ]);
+        $r = new Resolver(Fixtures::secretClient($t), requireEmailVerified: true);
+        self::assertTrue($r->resolve('Bearer tok')->emailVerified);
+    }
+
     public function testRequirePlanGate(): void
     {
         $t = FakeTransport::json(200, ['id' => 'u', 'email' => 'e@x.co', 'plan' => 'free']);

@@ -33,6 +33,36 @@ final class SseConsumerTest extends TestCase
         );
     }
 
+    /**
+     * ADR-0003: the Event Stream's credential is a request header for every SDK
+     * but browser JS. A key in the query string lands in the reverse proxy's
+     * access.log on every connect, so it must not appear in the URL at all.
+     */
+    public function testKeyTravelsAsHeaderAndNeverInTheStreamUrl(): void
+    {
+        $c = $this->consumer(new ArrayStore());
+        $ref = new \ReflectionClass($c);
+        $url = $ref->getMethod('streamUrl')->invoke($c);
+        $headers = $ref->getMethod('streamHeaders')->invoke($c);
+
+        self::assertContains('X-Publishable-Key: onelo_pk_test_abc', $headers);
+        self::assertStringNotContainsString('key=', $url);
+        self::assertStringNotContainsString('onelo_pk_test_abc', $url);
+        // The transport headers the stream already sent are untouched.
+        self::assertContains('Accept: text/event-stream', $headers);
+        self::assertContains('Cache-Control: no-cache', $headers);
+    }
+
+    public function testStreamUrlStillCarriesTheNonSecretIdentity(): void
+    {
+        $c = $this->consumer(new ArrayStore());
+        $url = (new \ReflectionClass($c))->getMethod('streamUrl')->invoke($c);
+
+        self::assertStringStartsWith('https://api.test.onelo.tools/api/sdk/features/stream?', $url);
+        self::assertStringContainsString('since_version=0', $url);
+        self::assertStringContainsString('sdk_platform=php', $url);
+    }
+
     public function testFeaturesUpdatedPopulatesStore(): void
     {
         $store = new ArrayStore();

@@ -11,5 +11,5 @@ namespace Onelo;
  */
 final class Version
 {
-    public const VERSION = '0.6.1';
+    public const VERSION = '0.8.1';
 }
