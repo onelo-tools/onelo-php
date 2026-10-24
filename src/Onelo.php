@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Onelo;
 
+use Onelo\Store\StoreClient;
 use Onelo\Features\FeaturesClient;
 use Onelo\Features\SnapshotStore;
 use Onelo\Http\CurlTransport;
@@ -36,6 +37,9 @@ final class Onelo
 
     /** The Features module — `$onelo->features->isEnabled('slug')`, `->forUser($id)`, etc. */
     public readonly FeaturesClient $features;
+
+    /** The Store module — `$onelo->store->listPlans()` (Secret Key only). */
+    public readonly StoreClient $store;
 
     /**
      * @param SnapshotStore|null $featureStore   snapshot store the Features module reads.
@@ -142,5 +146,6 @@ final class Onelo
         // `monitor.init(onelo=…)` auto-wiring of `onelo._cache.snapshot`.
         $this->monitor = new MonitorClient($this, fn (): array => $this->features->snapshot());
         $this->features = new FeaturesClient($this, $featureStore, $featureAutoRefresh);
+        $this->store = new StoreClient($this);
     }
 }

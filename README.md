@@ -83,6 +83,7 @@ Failures map to the status you'd expect: invalid or missing token → **401**, f
 | **Auth** | Verify tokens issued to your users by Onelo | `Verify::verifyToken()`, `Verify::verifyWithRetry()`, `Verify::extractBearerToken()` |
 | `$onelo->features` | Plan-gated feature flags | `isEnabled()`, `feature()`, `declare()`, `forUser()`, `ready()` |
 | `$onelo->monitor` | Error and event reporting, breadcrumbs | `init()`, `captureException()`, `track()`, `setUser()`, `flush()` |
+| `$onelo->store` | Your app's plans with prices (secret key) | `listPlans()` |
 
 Feature checks **fail closed** — if the snapshot is unavailable a flag reads as hidden, rather than accidentally granting access.
 
@@ -96,6 +97,14 @@ $flags = $onelo->features->forUser($userId);
 ```
 
 **Per-user calls require the secret key.** `forUser($userId)`, `identify($userId)` and a listener or consumer with a fixed `userId` send a user id that the Onelo backend trusts only from a secret-key caller. A publishable key is public, so a client built with one throws `Onelo\Features\SecretKeyRequired` on these calls ("use your secret key (onelo_sk_…) on the server") instead of sending a request anyone could forge. Anonymous calls (`isEnabled()`, `feature()`, `declare()`, `identify(null)`) work with either key. The `publishableKey` argument is deprecated for servers; pass `secretKey` (or `key`).
+
+Plans with prices, so an admin panel never copies them from the dashboard. `plan` is the same key as `OneloUser::$plan`; amounts are in minor units. A refused or failed request throws `Onelo\Store\StoreException` (with `status`); a publishable-key client throws `LogicException` before sending.
+
+```php
+foreach ($onelo->store->listPlans() as $p) {
+    echo $p->plan, ' ', $p->priceAmount, ' ', $p->currency; // pro 1900 eur
+}
+```
 
 ### Keeping flags fresh
 
