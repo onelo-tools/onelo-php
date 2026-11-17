@@ -21,6 +21,14 @@ final class OneloPlan
         public readonly ?int $trialPeriodDays,
         public readonly bool $isActive,
         public readonly int $sortOrder,
+        /** 'exclusive': $priceAmount is a net price and VAT is added on top. */
+        public readonly ?string $taxBehavior = null,
+        /** What a consumer is shown and charged: the price with VAT at the standard
+         *  rate of $displayTaxCountry when it is net, the price itself when it
+         *  already includes VAT. Show this one to buyers. */
+        public readonly ?int $displayPriceAmount = null,
+        public readonly ?int $displayAnnualPriceAmount = null,
+        public readonly ?string $displayTaxCountry = null,
     ) {
     }
 
@@ -38,6 +46,10 @@ final class OneloPlan
             isset($p['trial_period_days']) ? (int) $p['trial_period_days'] : null,
             (bool) ($p['is_active'] ?? false),
             (int) $p['sort_order'],
+            isset($p['tax_behavior']) ? (string) $p['tax_behavior'] : null,
+            isset($p['display_price_amount']) ? (int) $p['display_price_amount'] : null,
+            isset($p['display_annual_price_amount']) ? (int) $p['display_annual_price_amount'] : null,
+            isset($p['display_tax_country']) ? (string) $p['display_tax_country'] : null,
         );
     }
 }

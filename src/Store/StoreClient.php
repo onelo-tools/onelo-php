@@ -20,8 +20,12 @@ final class StoreClient
     {
     }
 
-    /** @return list<OneloPlan> the App's active plans, ordered by sort order */
-    public function listPlans(): array
+    /**
+     * @param string|null $country buyer country (ISO 3166-1 alpha-2, e.g. 'DE') for the
+     *                             display prices, used when the seller charges the buyer's own VAT
+     * @return list<OneloPlan> the App's active plans, ordered by sort order
+     */
+    public function listPlans(?string $country = null): array
     {
         if (!$this->client->isSecretKey) {
             throw new \LogicException('$onelo->store->listPlans() requires the Secret Key (onelo_sk_…) — call it from your server.');
@@ -29,7 +33,8 @@ final class StoreClient
         try {
             $resp = $this->client->transport->send(
                 'GET',
-                $this->client->apiUrl . '/api/sdk/store/plans',
+                $this->client->apiUrl . '/api/sdk/store/plans'
+                    . ($country !== null && $country !== '' ? '?country=' . rawurlencode($country) : ''),
                 [
                     'Accept' => 'application/json',
                     'User-Agent' => 'onelo-php/' . Version::VERSION,

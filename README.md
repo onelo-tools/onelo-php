@@ -102,9 +102,11 @@ Plans with prices, so an admin panel never copies them from the dashboard. `plan
 
 ```php
 foreach ($onelo->store->listPlans() as $p) {
-    echo $p->plan, ' ', $p->priceAmount, ' ', $p->currency; // pro 1900 eur
+    echo $p->plan, ' ', $p->displayPriceAmount, ' ', $p->currency; // pro 1900 eur
 }
 ```
+
+Show buyers `displayPriceAmount` (and `displayAnnualPriceAmount`): it is what they pay. For a net-priced plan (`taxBehavior` `'exclusive'`) `priceAmount` is the net and the display amount adds VAT at the standard rate of `displayTaxCountry`. Pass `listPlans('DE')` to price for a buyer's country when you sell under OSS.
 
 ### Keeping flags fresh
 

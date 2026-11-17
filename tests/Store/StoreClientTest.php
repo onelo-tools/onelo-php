@@ -26,6 +26,25 @@ final class StoreClientTest extends TestCase
         self::assertSame('onelo_sk_live_a', $t->lastHeaders['X-Onelo-Secret-Key']);
     }
 
+    public function testMapsWhatABuyerPaysAndSendsTheCountry(): void
+    {
+        $t = FakeTransport::json(200, ['plans' => [[
+            'plan' => 'pro', 'name' => 'Pro', 'short_label' => null, 'mode' => 'subscription',
+            'currency' => 'pln', 'price_amount' => 4900, 'annual_price_amount' => 49000,
+            'trial_period_days' => null, 'is_active' => true, 'sort_order' => 1,
+            'tax_behavior' => 'exclusive', 'display_price_amount' => 6027,
+            'display_annual_price_amount' => 60270, 'display_tax_country' => 'PL',
+        ]]]);
+        $onelo = new Onelo(secretKey: 'onelo_sk_live_a', apiUrl: 'https://api.test', transport: $t);
+        $plans = $onelo->store->listPlans('PL');
+        self::assertSame(4900, $plans[0]->priceAmount);
+        self::assertSame('exclusive', $plans[0]->taxBehavior);
+        self::assertSame(6027, $plans[0]->displayPriceAmount);
+        self::assertSame(60270, $plans[0]->displayAnnualPriceAmount);
+        self::assertSame('PL', $plans[0]->displayTaxCountry);
+        self::assertSame('https://api.test/api/sdk/store/plans?country=PL', $t->lastUrl);
+    }
+
     public function testPublishableKeyIsRefusedBeforeRequest(): void
     {
         $t = FakeTransport::json(200, ['plans' => []]);
